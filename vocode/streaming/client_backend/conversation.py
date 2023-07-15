@@ -37,7 +37,7 @@ BASE_CONVERSATION_ENDPOINT = "/conversation"
 class ConversationRouter(BaseRouter):
     def __init__(
         self,
-        agent: BaseAgent,
+        agent_thunk: Callable[[Optional[str]], BaseAgent],
         transcriber_thunk: Callable[
             [InputAudioConfig], BaseTranscriber
         ] = lambda input_audio_config: DeepgramTranscriber(
@@ -58,7 +58,7 @@ class ConversationRouter(BaseRouter):
     ):
         super().__init__()
         self.transcriber_thunk = transcriber_thunk
-        self.agent = agent
+        self.agent_thunk = agent_thunk
         self.synthesizer_thunk = synthesizer_thunk
         self.logger = logger or logging.getLogger(__name__)
         self.router = APIRouter()
@@ -69,13 +69,14 @@ class ConversationRouter(BaseRouter):
         output_device: WebsocketOutputDevice,
         start_message: AudioConfigStartMessage,
     ) -> StreamingConversation:
+        agent = self.agent_thunk(start_message.conversation_id)
         transcriber = self.transcriber_thunk(start_message.input_audio_config)
-        synthesizer = self.synthesizer_thunk(start_message.output_audio_config, start_message.conversation_id)
+        synthesizer = self.synthesizer_thunk(start_message.output_audio_config)
         synthesizer.synthesizer_config.should_encode_as_wav = True
         return StreamingConversation(
             output_device=output_device,
             transcriber=transcriber,
-            agent=self.agent,
+            agent=agent,
             synthesizer=synthesizer,
             conversation_id=start_message.conversation_id,
             events_manager=TranscriptEventManager(output_device, self.logger)
